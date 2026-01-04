@@ -9,23 +9,30 @@ use App\Http\Requests\UploadPaymentRequest;
 
 class PaymentController extends Controller
 {
-   public function upload(UploadPaymentRequest $request)
+    public function upload(UploadPaymentRequest $request)
     {
-        // 1. Validate the request
-        $validated = $request->validated();
+        try {
+            // 1. Validate the request
+            $validated = $request->validated();
 
-        // 2. Store the file in 'storage/app/public/uploads'
-        $path = $request->file('file')->store('uploads', 'public');
-        
-        // Note: It is often safer to use Storage::path() for the full path
-        $fullPath = storage_path('app/public/' . $path);
+            // 2. Store the file in 'storage/app/public/uploads'
+            $path = $request->file('file')->store('uploads', 'public');
+            
+            // Note: It is often safer to use Storage::path() for the full path
+            $fullPath = storage_path('app/public/' . $path);
 
-        // 3. Dispatch the Job
-        ProcessPaymentCsv::dispatch($fullPath);
+            // 3. Dispatch the Job
+            ProcessPaymentCsv::dispatch($fullPath);
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'File is being processed in the background.'
-        ], 202);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'File is being processed in the background.'
+            ], 202);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "An error occurred: {$e->getMessage()}"
+            ], 500);
+        }
     }
 }
