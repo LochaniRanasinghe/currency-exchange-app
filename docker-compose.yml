@@ -19,9 +19,46 @@ services:
       DB_USERNAME: ${DB_USERNAME:-root}
       DB_PASSWORD: ${DB_PASSWORD:-root}
       APP_DEBUG: "true"
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-production}
     networks:
       - currency-network
+
+  # --- NEW SERVICE: THE QUEUE WORKER ---
+  # This listens to SQS and processes the 2 stuck messages
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: currency_exchange_worker
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - db
+      - app
+    environment:
+      # Database Config (To log failed jobs/status)
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-currency_exchange}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      APP_ENV: ${APP_ENV:-production}
+
+      # AWS & Queue Config (CRITICAL for SQS)
+      # These values come from the .env file on the server
+      QUEUE_CONNECTION: sqs
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      AWS_BUCKET: ${AWS_BUCKET}
+      SQS_PREFIX: ${SQS_PREFIX}
+      SQS_QUEUE: ${SQS_QUEUE}
+    networks:
+      - currency-network
+    # This command runs the worker process
+    command: php artisan queue:work sqs --tries=3 --timeout=90
 
   nginx:
     image: nginx:latest
