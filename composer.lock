@@ -6205,16 +6205,16 @@
         },
         {
             "name": "yoeunes/regex-parser",
-            "version": "v1.0.9",
+            "version": "v1.0.10",
             "source": {
                 "type": "git",
                 "url": "https://github.com/yoeunes/regex-parser.git",
-                "reference": "cc163555db14ca26661d556710f7b445da449155"
+                "reference": "5b80e32ea6d650be8a42577310a3a8bb3f99c7b0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/yoeunes/regex-parser/zipball/cc163555db14ca26661d556710f7b445da449155",
-                "reference": "cc163555db14ca26661d556710f7b445da449155",
+                "url": "https://api.github.com/repos/yoeunes/regex-parser/zipball/5b80e32ea6d650be8a42577310a3a8bb3f99c7b0",
+                "reference": "5b80e32ea6d650be8a42577310a3a8bb3f99c7b0",
                 "shasum": ""
             },
             "require": {
@@ -6231,6 +6231,9 @@
             ],
             "type": "library",
             "extra": {
+                "ide": {
+                    "regex.dist.json": "./regex.schema.json"
+                },
                 "phpstan": {
                     "includes": [
                         "extension.neon"
@@ -6283,7 +6286,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-01-03T13:03:02+00:00"
+            "time": "2026-01-04T06:27:57+00:00"
         }
     ],
     "packages-dev": [
