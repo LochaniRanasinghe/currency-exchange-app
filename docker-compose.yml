@@ -1,0 +1,30 @@
+services:
+  # The Web API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9000:80"
+    env_file: .env
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+
+  # The Background Queue Worker (SQS)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: php artisan queue:work sqs
+    env_file: .env
+    volumes:
+      - .:/var/www/html
+
+  # Local Database (for testing)
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: payment_db
+      MYSQL_ROOT_PASSWORD: password

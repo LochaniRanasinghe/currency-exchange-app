@@ -8,6 +8,7 @@ use App\Models\Payment;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -80,10 +81,22 @@ class ProcessPaymentCsv implements ShouldQueue
 
     public function handle()
     {
-        $file = fopen($this->filePath, 'r');
+        // 1. Pull the file content from S3 instead of local disk
+        // $this->filePath is now just the name of the file in the S3 bucket
+        if (!Storage::disk('s3')->exists($this->filePath)) {
+            Log::error("File not found on S3: {$this->filePath}");
+            return;
+        }
+
+        $content = Storage::disk('s3')->get($this->filePath);
+
+        // 2. Turn the S3 content into a stream so we can parse it row-by-row
+        $file = fopen('php://temp', 'r+');
+        fwrite($file, $content);
+        rewind($file);
+
         $header = fgetcsv($file);
         
-        // Track totals for a final log summary
         $successCount = 0;
         $failureCount = 0;
 
@@ -92,15 +105,15 @@ class ProcessPaymentCsv implements ShouldQueue
                 $data = array_combine($header, $row);
                 $reference = $data['reference_no'] ?? 'Unknown';
 
-                // 1. Fetch Exchange Rate
+                // --- API Logic Start ---
                 $apiKey = '00Ls8gb8Y8U9S5ZtDMTpuKp3GGz4G2Z8';
                 $currency = strtoupper($data['currency']);
                 $amount = (float)$data['amount'];
 
                 $apiUrl = "https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols={$currency}";
-                $response = Http::withoutVerifying()
-                    ->withHeaders(['apikey' => $apiKey])
-                    ->get($apiUrl);
+                
+                // Note: In AWS production, you can usually remove ->withoutVerifying()
+                $response = Http::withHeaders(['apikey' => $apiKey])->get($apiUrl);
 
                 if (!$response->successful()) {
                     throw new Exception("API Error: " . $response->status());
@@ -110,14 +123,13 @@ class ProcessPaymentCsv implements ShouldQueue
                 $rate = $result['rates'][$currency] ?? null;
 
                 if (!$rate) {
-                    throw new Exception("Rate for {$currency} not found in API response.");
+                    throw new Exception("Rate for {$currency} not found.");
                 }
+                // --- API Logic End ---
 
-                // 2. Calculation
                 $usdAmount = $amount / $rate;
-                $transactionDate = Carbon::parse($data['date_time']);
 
-                // 3. Store in Database [cite: 17]
+                // 3. This saves the DATA into your SQL Database
                 Payment::create([
                     'customer_id'      => $data['customer_id'],
                     'customer_name'    => $data['customer_name'],
@@ -125,26 +137,24 @@ class ProcessPaymentCsv implements ShouldQueue
                     'amount'           => $amount,
                     'currency'         => $currency,
                     'reference_no'     => $reference,
-                    'transaction_date' => $transactionDate,
+                    'transaction_date' => Carbon::parse($data['date_time']),
                     'usd_amount'       => $usdAmount,
                 ]);
 
-                // 4. Log Success for the row [cite: 18]
-                Log::info("Row Processed Successfully: Reference {$reference}");
+                Log::info("Row Processed: Reference {$reference}");
                 $successCount++;
 
             } catch (Exception $e) {
-                // 5. Log Failure for the row without stopping the loop [cite: 18, 19]
-                Log::error("Row Processing Failed: Reference " . ($data['reference_no'] ?? 'N/A') . ". Error: " . $e->getMessage());
+                Log::error("Row Failed: Ref " . ($data['reference_no'] ?? 'N/A') . ". Error: " . $e->getMessage());
                 $failureCount++;
-                continue; // Move to the next row
             }
         }
 
         fclose($file);
-        unlink($this->filePath);
 
-        // Final Summary Log 
+        // IMPORTANT: We do NOT use unlink() or Storage::delete() here 
+        // because you want to keep the file in S3 for storage.
+
         Log::info("CSV Processing Complete. Successes: {$successCount}, Failures: {$failureCount}");
     }
 }
