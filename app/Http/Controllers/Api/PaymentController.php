@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use Illuminate\Http\Request;
 use App\Jobs\ProcessPaymentCsv;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\UploadPaymentRequest;
 
 class PaymentController extends Controller
@@ -12,21 +14,24 @@ class PaymentController extends Controller
     public function upload(UploadPaymentRequest $request)
     {
         try {
-            // 1. Validate the request
             $validated = $request->validated();
 
-            // 2. Store the file in 'storage/app/public/uploads'
-            $path = $request->file('file')->store('uploads', 'public');
-            
-            // Note: It is often safer to use Storage::path() for the full path
-            $fullPath = storage_path('app/public/' . $path);
+            $path = $request->file('file')->store('uploads', 's3');
+            if (!$path) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The S3 driver returned false. Check your AWS credentials or bucket name.'
+                ], 500);
+            }
 
-            // 3. Dispatch the Job
-            ProcessPaymentCsv::dispatch($fullPath);
+            ProcessPaymentCsv::dispatch($path);
+
+            Log::info("File uploaded to S3 and Job dispatched: " . $path);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'File is being processed in the background.'
+                'message' => 'File uploaded successfully to S3!',
+                'path' => $path
             ], 202);
         } catch (\Exception $e) {
             return response()->json([

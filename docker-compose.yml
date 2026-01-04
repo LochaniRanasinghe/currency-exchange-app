@@ -1,0 +1,63 @@
+version: "3.8"
+services:
+  # The App (API)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: currency-exchange-app
+    container_name: currency-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+    networks:
+      - app-network
+
+  # The Worker (Processes SQS and Saves to DB)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: currency-worker
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+    command: php artisan queue:work --sleep=3 --tries=3
+    depends_on:
+      - db
+      - app
+    networks:
+      - app-network
+
+  db:
+    image: mysql:8.0
+    container_name: currency-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: currency-nginx
+    restart: unless-stopped
+    ports:
+      - "9000:80"
+    volumes:
+      - .:/var/www
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro # Added :ro for Read Only
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  dbdata:
