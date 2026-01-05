@@ -57,7 +57,7 @@ class ProcessPaymentCsv implements ShouldQueue
                 $reference = $data['reference_no'] ?? 'Unknown';
 
                 // 1. Fetch Exchange Rate
-                $apiKey = env('EXCHANGE_RATE_API_KEY');
+                $apiKey = 'pKaJQUMRXUEH4BxpOA1RNNgRHWjBH9Jb';
                 $currency = strtoupper($data['currency']);
                 $amount = (float)$data['amount'];
 
