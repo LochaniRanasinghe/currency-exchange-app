@@ -28,9 +28,10 @@ class ProcessPaymentCsv implements ShouldQueue
         $this->filePath = $filePath;
         $this->disk = $disk;
     }
+    
     public function handle()
     {
-        // Get file content from storage (S3 or local)
+        // Get file content from storage (S3)
         if (!Storage::disk($this->disk)->exists($this->filePath)) {
             Log::error("File not found: {$this->filePath}");
             throw new Exception("File not found: {$this->filePath}");
@@ -80,7 +81,7 @@ class ProcessPaymentCsv implements ShouldQueue
                 $usdAmount = $amount / $rate;
                 $transactionDate = Carbon::parse($data['date_time']);
 
-                // 3. Store in Database [cite: 17]
+                // 3. Store in Database
                 Payment::create([
                     'customer_id'      => $data['customer_id'],
                     'customer_name'    => $data['customer_name'],
@@ -92,11 +93,11 @@ class ProcessPaymentCsv implements ShouldQueue
                     'usd_amount'       => $usdAmount,
                 ]);
 
-                // 4. Log Success for the row [cite: 18]
+                // 4. Log Success for the row
                 Log::info("Row Processed Successfully: Reference {$reference}");
                 $successCount++;
             } catch (Exception $e) {
-                // 5. Log Failure for the row without stopping the loop [cite: 18, 19]
+                // 5. Log Failure for the row without stopping the loop
                 Log::error("Row Processing Failed: Reference " . ($data['reference_no'] ?? 'N/A') . ". Error: " . $e->getMessage());
                 $failureCount++;
                 continue; // Move to the next row

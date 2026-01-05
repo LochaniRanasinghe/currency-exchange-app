@@ -13,14 +13,11 @@ class PaymentController extends Controller
     public function upload(UploadPaymentRequest $request)
     {
         try {
-            // 1. Validate the request
             $validated = $request->validated();
 
-            // 2. Store the file on S3 (or configured disk)
             $disk = config('filesystems.default');
             $path = $request->file('file')->store('uploads/payments', $disk);
 
-            // 3. Dispatch the Job with the S3 path
             ProcessPaymentCsv::dispatch($path, $disk);
 
             return response()->json([
