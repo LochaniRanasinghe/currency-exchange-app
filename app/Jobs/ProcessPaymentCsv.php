@@ -8,6 +8,7 @@ use App\Models\Payment;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,8 +16,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 
 class ProcessPaymentCsv implements ShouldQueue
 {
-    use Queueable;
-
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected $filePath;
@@ -78,46 +77,79 @@ class ProcessPaymentCsv implements ShouldQueue
     // }
 
 
-    public function handle()
+    /**
+     * Execute the job.
+     */
+    public function handle(): void
     {
-        $file = fopen($this->filePath, 'r');
-        $header = fgetcsv($file);
-        
-        // Track totals for a final log summary
+        Log::info("Job Started: Processing CSV at {$this->filePath}");
+        // 1. Check if file exists in public disk
+        $fullPath = storage_path('app/public/' . $this->filePath);
+        if (!file_exists($fullPath)) {
+            Log::error("Job Failed: File not found at {$fullPath}");
+            return;
+        }
+
+        $stream = fopen($fullPath, 'r');
+        if (!$stream) {
+            Log::error("Job Failed: Could not open stream for {$fullPath}");
+            return;
+        }
+
+        $header = fgetcsv($stream);
+
         $successCount = 0;
         $failureCount = 0;
 
-        while (($row = fgetcsv($file)) !== false) {
+        $cachedRates = [];
+        $apiKey = '994orjUPsojC7HM0h3QhQZSpcEOYcLmV';
+
+        while (($row = fgetcsv($stream)) !== false) {
             try {
                 $data = array_combine($header, $row);
-                $reference = $data['reference_no'] ?? 'Unknown';
-
-                // 1. Fetch Exchange Rate
-                $apiKey = '00Ls8gb8Y8U9S5ZtDMTpuKp3GGz4G2Z8';
-                $currency = strtoupper($data['currency']);
+                $currency = strtoupper($data['currency']); // e.g., "EUR"
                 $amount = (float)$data['amount'];
+                $reference = $data['reference_no'] ?? 'N/A';
 
-                $apiUrl = "https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols={$currency}";
-                $response = Http::withoutVerifying()
-                    ->withHeaders(['apikey' => $apiKey])
-                    ->get($apiUrl);
+                Log::info("Processing reference: {$reference} with amount: {$amount} {$currency}");
 
-                if (!$response->successful()) {
-                    throw new Exception("API Error: " . $response->status());
+                // 3. Fetch Exchange Rate (using $currency as the 'symbols' parameter)
+                if (!isset($cachedRates[$currency])) {
+                    Log::info("Fetching fresh rate for {$currency} from API...");
+
+                    $apiUrl = "https://api.apilayer.com/exchangerates_data/latest";
+
+                    $response = Http::withHeaders(['apikey' => $apiKey])
+                        ->withoutVerifying()
+                        ->get($apiUrl, [
+                            'symbols' => $currency,
+                            'base'    => 'USD',
+                        ]);
+
+                    Log::info("API Response Status: " . $response);
+
+                    if (!$response->successful()) {
+                        // Throw the exception first; the catch block handles the Log::error
+                        throw new Exception("API Error {$response->status()}: " . $response->body());
+                    }
+
+                    $result = $response->json();
+
+                    // Verify the rate exists in the response
+                    if (!isset($result['rates'][$currency])) {
+                        throw new Exception("Currency {$currency} not found in API response.");
+                    }
+
+                    $cachedRates[$currency] = $result['rates'][$currency];
                 }
 
-                $result = $response->json();
-                $rate = $result['rates'][$currency] ?? null;
+                $rate = $cachedRates[$currency];
 
-                if (!$rate) {
-                    throw new Exception("Rate for {$currency} not found in API response.");
-                }
-
-                // 2. Calculation
+                // 4. Calculations
                 $usdAmount = $amount / $rate;
                 $transactionDate = Carbon::parse($data['date_time']);
 
-                // 3. Store in Database [cite: 17]
+                // 5. Save to Database
                 Payment::create([
                     'customer_id'      => $data['customer_id'],
                     'customer_name'    => $data['customer_name'],
@@ -129,22 +161,17 @@ class ProcessPaymentCsv implements ShouldQueue
                     'usd_amount'       => $usdAmount,
                 ]);
 
-                // 4. Log Success for the row [cite: 18]
-                Log::info("Row Processed Successfully: Reference {$reference}");
                 $successCount++;
+                Log::info("Successfully processed reference: {$reference}");
 
             } catch (Exception $e) {
-                // 5. Log Failure for the row without stopping the loop [cite: 18, 19]
-                Log::error("Row Processing Failed: Reference " . ($data['reference_no'] ?? 'N/A') . ". Error: " . $e->getMessage());
                 $failureCount++;
-                continue; // Move to the next row
+                Log::error("Row Error | Reference: " . ($data['reference_no'] ?? 'N/A') . " | " . $e->getMessage());
             }
         }
 
-        fclose($file);
-        unlink($this->filePath);
+        fclose($stream);
 
-        // Final Summary Log 
-        Log::info("CSV Processing Complete. Successes: {$successCount}, Failures: {$failureCount}");
+        Log::info("CSV Processing Complete. Success: {$successCount}, Fail: {$failureCount}");
     }
 }
