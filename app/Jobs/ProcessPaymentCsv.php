@@ -13,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Support\Env;
 
 class ProcessPaymentCsv implements ShouldQueue
 {
@@ -31,6 +32,7 @@ class ProcessPaymentCsv implements ShouldQueue
     
     public function handle()
     {
+        Log::info("Starting CSV Processing for file: {$this->filePath}");
         // Get file content from storage (S3)
         if (!Storage::disk($this->disk)->exists($this->filePath)) {
             Log::error("File not found: {$this->filePath}");
@@ -57,14 +59,17 @@ class ProcessPaymentCsv implements ShouldQueue
                 $reference = $data['reference_no'] ?? 'Unknown';
 
                 // 1. Fetch Exchange Rate
-                $apiKey = 'pKaJQUMRXUEH4BxpOA1RNNgRHWjBH9Jb';
+                $apiKey = Env::get('EXCHANGE_RATE_API_KEY');
                 $currency = strtoupper($data['currency']);
                 $amount = (float)$data['amount'];
 
-                $apiUrl = "https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols={$currency}";
-                $response = Http::withoutVerifying()
-                    ->withHeaders(['apikey' => $apiKey])
-                    ->get($apiUrl);
+                $apiUrl = "https://api.apilayer.com/exchangerates_data/latest";
+                $response = Http::withHeaders(['apikey' => $apiKey])
+                        ->withoutVerifying()
+                        ->get($apiUrl, [
+                            'symbols' => $currency,
+                            'base'    => 'USD',
+                        ]);
 
                 if (!$response->successful()) {
                     throw new Exception("API Error: " . $response->status());
