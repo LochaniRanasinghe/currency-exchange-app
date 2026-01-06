@@ -32,20 +32,17 @@ jobs:
             PROJECT_DIR="/home/ubuntu/currency-exchange-app-main"
 
             # -----------------------------
-            # STEP 1: INSTALL DOCKER + COMPOSE V2 (OFFICIAL METHOD)
+            # STEP 1: INSTALL / ENSURE DOCKER + COMPOSE V2
             # -----------------------------
-            echo "Installing / verifying Docker and Docker Compose v2..."
+            echo "Installing / ensuring Docker and Docker Compose v2..."
 
+            # Install Docker if missing
             if ! command -v docker &> /dev/null; then
-                echo "Docker not found. Installing..."
+                echo "Docker not found. Installing latest Docker..."
                 sudo apt-get update
-                sudo apt-get install -y \
-                    ca-certificates \
-                    curl \
-                    gnupg \
-                    lsb-release
+                sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-                # Add Docker GPG key and repo
+                # Add Docker repo
                 sudo mkdir -p /etc/apt/keyrings
                 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
                 echo \
@@ -59,10 +56,13 @@ jobs:
                 sudo systemctl enable docker
                 sudo usermod -aG docker $USER
             else
-                echo "Docker already installed."
+                echo "Docker already installed. Installing/updating Docker Compose v2 plugin..."
+                sudo apt-get update
+                sudo apt-get install -y docker-compose-plugin || true
             fi
 
-            # Verify Docker Compose v2
+            # Verify installation
+            docker --version
             docker compose version
 
             # -----------------------------
