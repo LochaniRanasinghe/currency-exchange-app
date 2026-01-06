@@ -19,7 +19,7 @@ class PaymentController extends Controller
             $disk = config('filesystems.default');
             $path = $request->file('file')->store('uploads/payments', $disk);
 
-            Log::info("File uploaded to {$path} on disk {$disk}");
+            //Log::info("File uploaded to {$path} on disk {$disk}");
 
             ProcessPaymentCsv::dispatch($path, $disk);
 
