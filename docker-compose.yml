@@ -21,7 +21,7 @@ services:
       APP_DEBUG: "true"
       APP_ENV: ${APP_ENV:-production}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD", "php-fpm", "-t"]
       interval: 10s
       timeout: 10s
       retries: 10
