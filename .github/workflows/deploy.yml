@@ -67,6 +67,8 @@ jobs:
             sudo docker rm -f currency_exchange_worker || true
             sudo docker rm -f currency_exchange_nginx || true
             sudo docker rm -f currency_exchange_pma || true
+            # Wait a moment to ensure containers are fully removed
+            sleep 3
 
             # Clean up old unused images only (not volumes!)
             sudo docker image prune -f
@@ -74,9 +76,17 @@ jobs:
             # Start Containers
 
             sudo docker-compose up -d --build || {
-              echo "docker-compose up failed! Printing logs for diagnosis..."
-              sudo docker-compose logs
-              exit 1
+                echo "docker-compose up failed! Printing logs for diagnosis..."
+                sudo docker-compose ps -a
+                sudo docker-compose logs
+                # Print logs for each unhealthy container
+                for cname in currency_exchange_app currency_exchange_worker currency_exchange_nginx currency_exchange_db currency_exchange_pma; do
+                  if sudo docker ps -a --format '{{.Names}} {{.Status}}' | grep -q "$cname"; then
+                    echo "--- Logs for $cname ---"
+                    sudo docker logs $cname || true
+                  fi
+                done
+                exit 1
             }
 
             # Wait for all services to be healthy (not just "Up")
@@ -88,7 +98,14 @@ jobs:
               unhealthy=$(sudo docker-compose ps | grep -E "(unhealthy)" | wc -l)
               if [ "$unhealthy" -gt 0 ]; then
                 echo "ERROR: One or more containers are unhealthy! Printing logs..."
+                sudo docker-compose ps -a
                 sudo docker-compose logs
+                for cname in currency_exchange_app currency_exchange_worker currency_exchange_nginx currency_exchange_db currency_exchange_pma; do
+                  if sudo docker ps -a --format '{{.Names}} {{.Status}}' | grep -q "$cname"; then
+                  echo "--- Logs for $cname ---"
+                  sudo docker logs $cname || true
+                  fi
+                done
                 exit 1
               fi
               if sudo docker-compose ps | grep -q "(healthy)"; then
