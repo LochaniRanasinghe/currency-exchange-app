@@ -60,7 +60,7 @@ class ProcessPaymentCsv implements ShouldQueue
 
 
                 // 1. Fetch Exchange Rate
-                $apiKey = config('services.exchange_rate.key');
+                $apiKey = env('EXCHANGE_RATE_API_KEY', 'Hj7H1x7hjBUng1T3uT9FLiWJwwl1RV2i');
                 Log::info('Using API key: ' . $apiKey);
                 $currency = strtoupper($data['currency']);
                 $amount = (float)$data['amount'];
