@@ -23,28 +23,20 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: GITHUB_TOKEN
           script: |
-            set -e
-
             # --- VARIABLES ---
             REPO_URL="https://x-access-token:$GITHUB_TOKEN@github.com/LochaniRanasinghe/currency-exchange-app.git"
-            PROJECT_DIR="/home/ubuntu/currency-exchange-app-main"
+            PROJECT_DIR="/home/ubuntu/currency-exchange-app"
 
-            # --- STEP 1: INSTALL DOCKER (WITHOUT docker-compose v1) ---
+            # --- STEP 1: INSTALL DOCKER (If not installed) ---
             if ! command -v docker &> /dev/null; then
-                echo "Docker not found. Installing Docker..."
+                echo "Docker not found. Installing..."
                 sudo apt-get update
-                sudo apt -get install -y docker.io docker-compose-plugin
-                sudo systemctl start docker
-                sudo systemctl enable docker
+                sudo apt-get install -y docker.io docker-compose
                 sudo usermod -aG docker $USER
-                echo "Docker installed successfully."
-                docker compose version
+                echo "Docker installed."
             else
-                echo "Docker already installed."
+                echo "Docker is already installed."
             fi
-
-            # --- VERIFY DOCKER COMPOSE v2 ---
-            docker compose version
 
             # --- STEP 2: CLONE OR PULL CODE ---
             if [ ! -d "$PROJECT_DIR" ]; then
@@ -60,29 +52,101 @@ jobs:
             # --- STEP 3: DEPLOY APP ---
             cd $PROJECT_DIR
 
-            echo "Stopping and cleaning old containers..."
-            sudo docker compose down -v --remove-orphans || true
-
-            echo "Cleaning unused Docker resources..."
-            sudo docker system prune -a -f --volumes
-
-            # Write the .env file from GitHub Secrets
+            # Write the .env file from Secrets
             echo "${{ secrets.ENV_FILE }}" > .env
 
-            echo "Starting containers with Docker Compose v2..."
-            sudo docker compose up -d --build
+            # Stop and remove containers (but keep volumes!)
+            echo "Stopping existing containers..."
+            sudo docker-compose down || true
 
-            # Wait for DB to be ready
-            echo "Waiting 30 seconds for Database to start..."
-            sleep 30
+            # Clean up old unused images only (not volumes!)
+            sudo docker image prune -f
 
-            # --- LARAVEL SETUP ---
-            sudo docker compose exec -T app composer install --no-dev --optimize-autoloader
-            sudo docker compose exec -T app php artisan migrate --force
-            sudo docker compose exec -T app php artisan config:cache
-            sudo docker compose exec -T app php artisan route:cache
-            sudo docker compose exec -T app php artisan view:cache
-            sudo docker compose exec -T app php artisan queue:restart
-            sudo docker compose exec -T app chmod -R 777 storage bootstrap/cache
+            # Start Containers
+            sudo docker-compose up -d --build
 
-            echo "✅ Deployment Finished Successfully!"
+            # Wait for all services to be healthy (not just "Up")
+            echo "Waiting for all services to be healthy..."
+            timeout=180
+            elapsed=0
+            while [ $elapsed -lt $timeout ]; do
+                if sudo docker-compose ps | grep -q "(healthy)"; then
+                    healthy_count=$(sudo docker-compose ps | grep -c "(healthy)" || echo 0)
+                    if [ $healthy_count -ge 2 ]; then
+                        echo "All critical services are healthy!"
+                        break
+                    fi
+                fi
+                echo "Waiting for services to become healthy... ($elapsed/$timeout seconds)"
+                sleep 5
+                elapsed=$((elapsed + 5))
+            done
+
+            # Verify containers are running and healthy
+            echo "Final container status:"
+            sudo docker-compose ps
+            if ! sudo docker-compose ps | grep -q "(healthy)"; then
+                echo "ERROR: Services did not become healthy in time!"
+                sudo docker-compose logs
+                exit 1
+            fi
+
+            # --- STEP 4: LARAVEL SETUP & PERMISSION FIX ---
+            echo "Configuring git safe directory..."
+            sudo docker-compose exec -T app git config --global --add safe.directory /var/www
+
+            # 1. Force clean vendor folder (both in container and on host)
+            echo "Force cleaning vendor folder..."
+            sudo rm -rf $PROJECT_DIR/vendor
+            sudo docker-compose exec -T app rm -rf /var/www/vendor
+
+            # 2. Install Dependencies with fresh cache
+            echo "Installing Composer dependencies (production only)..."
+            sudo docker-compose exec -T app composer install \
+                --no-dev \
+                --optimize-autoloader \
+                --no-interaction \
+                --prefer-dist \
+                --no-scripts || {
+                echo "ERROR: Composer install failed!"
+                echo "Attempting to clear composer cache and retry..."
+                sudo docker-compose exec -T app composer clear-cache
+                sudo docker-compose exec -T app composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts || {
+                    echo "ERROR: Composer install failed after retry!"
+                    sudo docker-compose exec -T app composer diagnose
+                    exit 1
+                }
+            }
+
+            # 3. Run post-install scripts manually
+            echo "Running post-install scripts..."
+            sudo docker-compose exec -T app composer dump-autoload --optimize --no-dev
+            sudo docker-compose exec -T app php artisan package:discover --ansi
+            echo "Composer install completed successfully."
+
+            # 2. Run Migrations & Cache
+            echo "Running database migrations..."
+            sudo docker-compose exec -T app php artisan migrate --force || {
+                echo "ERROR: Migration failed!"
+                exit 1
+            }
+            echo "Caching configuration..."
+            sudo docker-compose exec -T app php artisan config:cache
+            sudo docker-compose exec -T app php artisan route:cache
+            sudo docker-compose exec -T app php artisan view:cache
+
+            # 3. CRITICAL FIX: Change Ownership to www-data
+            # This fixes the issue where Nginx cannot read the 'vendor' folder
+            echo "Fixing ownership and permissions..."
+            sudo docker-compose exec -T app chown -R www-data:www-data /var/www/vendor
+            sudo docker-compose exec -T app chown -R www-data:www-data /var/www/storage
+            sudo docker-compose exec -T app chown -R www-data:www-data /var/www/bootstrap/cache
+
+            # 4. Ensure directories are writable
+            sudo docker-compose exec -T app chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+            echo "Permissions fixed successfully."
+
+            # 5. Restart Queue Worker (To load new code/vendor files)
+            sudo docker-compose restart worker
+
+            echo "Deployment Finished Successfully!"
