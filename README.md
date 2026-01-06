@@ -1,59 +1,118 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Currency Exchange App
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## Setup
 
-## About Laravel
+Clone and install dependencies:
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+```bash
+git clone https://github.com/LochaniRanasinghe/currency-exchange-app.git
+cd currency-exchange-app
+composer install
+npm install && npm run build
+php artisan key:generate
+```
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Docker
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Build and run all services:
 
-## Learning Laravel
+```bash
+docker-compose up --build
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Stop containers:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+docker-compose down
+```
 
-## Laravel Sponsors
+## Environment Variables
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Configure `.env` for:
 
-### Premium Partners
+-   AWS S3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_URL`, `FILESYSTEM_DISK=s3`
+-   AWS SQS: `QUEUE_CONNECTION=sqs`, `SQS_PREFIX`, `SQS_QUEUE`, `SQS_SUFFIX`
+-   Exchange Rate API: `EXCHANGE_RATE_API_KEY`
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Migrations
 
-## Contributing
+Run database migrations:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan migrate
+```
 
-## Code of Conduct
+Migration files: `database/migrations/`
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Workers & Scheduler
 
-## Security Vulnerabilities
+Queue worker:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan queue:work
+```
 
-## License
+Scheduler:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+php artisan schedule:run
+```
+
+Production cron example:
+
+```cron
+* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1
+```
+
+## API Usage
+
+-   Base URL: `http://localhost` (or `APP_URL`)
+-   File upload: `/upload` (see `resources/views/upload-view.blade.php`)
+-   Currency rates: uses external API via `EXCHANGE_RATE_API_KEY`
+-   Auth: Laravel built-in (see `config/auth.php`)
+-   Storage: AWS S3
+-   Queue: AWS SQS
+
+## Workflow Integrations
+
+-   Add CI/CD workflow YAML in `.github/workflows/` for automated testing/deployment
+-   Docker: all services containerized
+-   AWS: S3 for storage, SQS for queue
+
+## Commands
+
+Start containers:
+
+```bash
+docker-compose up --build
+```
+
+Run migrations:
+
+```bash
+php artisan migrate
+```
+
+Run queue worker:
+
+```bash
+php artisan queue:work
+```
+
+Run scheduler:
+
+```bash
+php artisan schedule:run
+```
+
+Run tests:
+
+```bash
+php artisan test
+```
+
+## Notes
+
+-   Ensure AWS and SQS config in `.env`
+-   For production, set `APP_ENV=production`
+-   Logs: `storage/logs/` and Docker container logs
