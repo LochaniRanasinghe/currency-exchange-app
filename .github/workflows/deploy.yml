@@ -61,30 +61,46 @@ jobs:
             sudo docker-compose down || true
 
             # Remove any orphaned db container to avoid name conflict
-            echo "Removing any existing db container to avoid name conflict..."
+            echo "Removing any existing containers to avoid name conflicts..."
             sudo docker rm -f currency_exchange_db || true
+            sudo docker rm -f currency_exchange_app || true
+            sudo docker rm -f currency_exchange_worker || true
+            sudo docker rm -f currency_exchange_nginx || true
+            sudo docker rm -f currency_exchange_pma || true
 
             # Clean up old unused images only (not volumes!)
             sudo docker image prune -f
 
             # Start Containers
-            sudo docker-compose up -d --build
+
+            sudo docker-compose up -d --build || {
+              echo "docker-compose up failed! Printing logs for diagnosis..."
+              sudo docker-compose logs
+              exit 1
+            }
 
             # Wait for all services to be healthy (not just "Up")
+
             echo "Waiting for all services to be healthy..."
             timeout=180
             elapsed=0
             while [ $elapsed -lt $timeout ]; do
-                if sudo docker-compose ps | grep -q "(healthy)"; then
-                    healthy_count=$(sudo docker-compose ps | grep -c "(healthy)" || echo 0)
-                    if [ $healthy_count -ge 2 ]; then
-                        echo "All critical services are healthy!"
-                        break
-                    fi
+              unhealthy=$(sudo docker-compose ps | grep -E "(unhealthy)" | wc -l)
+              if [ "$unhealthy" -gt 0 ]; then
+                echo "ERROR: One or more containers are unhealthy! Printing logs..."
+                sudo docker-compose logs
+                exit 1
+              fi
+              if sudo docker-compose ps | grep -q "(healthy)"; then
+                healthy_count=$(sudo docker-compose ps | grep -c "(healthy)" || echo 0)
+                if [ $healthy_count -ge 2 ]; then
+                  echo "All critical services are healthy!"
+                  break
                 fi
-                echo "Waiting for services to become healthy... ($elapsed/$timeout seconds)"
-                sleep 5
-                elapsed=$((elapsed + 5))
+              fi
+              echo "Waiting for services to become healthy... ($elapsed/$timeout seconds)"
+              sleep 5
+              elapsed=$((elapsed + 5))
             done
 
             # Verify containers are running and healthy
