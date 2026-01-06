@@ -56,8 +56,13 @@ jobs:
             echo "${{ secrets.ENV_FILE }}" > .env
 
             # Stop and remove containers (but keep volumes!)
+
             echo "Stopping existing containers..."
             sudo docker-compose down || true
+
+            # Remove any orphaned db container to avoid name conflict
+            echo "Removing any existing db container to avoid name conflict..."
+            sudo docker rm -f currency_exchange_db || true
 
             # Clean up old unused images only (not volumes!)
             sudo docker image prune -f

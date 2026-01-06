@@ -96,6 +96,7 @@ services:
           "ping",
           "-h",
           "localhost",
+          
           "-u",
           "root",
           "-p${DB_PASSWORD:-root}",
