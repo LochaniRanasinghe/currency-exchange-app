@@ -178,10 +178,12 @@ jobs:
             echo "Composer install completed successfully."
 
             # 2. Run Migrations & Cache
+            echo "Ensuring cache table exists..."
+            sudo docker-compose exec -T app php artisan cache:table || true
             echo "Running database migrations..."
             sudo docker-compose exec -T app php artisan migrate --force || {
-                echo "ERROR: Migration failed!"
-                exit 1
+              echo "ERROR: Migration failed!"
+              exit 1
             }
             echo "Caching configuration..."
             sudo docker-compose exec -T app php artisan config:cache
