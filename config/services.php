@@ -1,3 +1,6 @@
+    'exchange_rate' => [
+        'key' => env('EXCHANGE_RATE_API_KEY'),
+    ],
 <?php
 
 return [
