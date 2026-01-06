@@ -25,82 +25,58 @@ jobs:
           script: |
             set -e
 
-            # -----------------------------
-            # VARIABLES
-            # -----------------------------
+            # --- VARIABLES ---
             REPO_URL="https://x-access-token:$GITHUB_TOKEN@github.com/LochaniRanasinghe/currency-exchange-app.git"
             PROJECT_DIR="/home/ubuntu/currency-exchange-app-main"
 
-            # -----------------------------
-            # STEP 1: INSTALL / ENSURE DOCKER + COMPOSE V2
-            # -----------------------------
-            echo "Installing / ensuring Docker and Docker Compose v2..."
-
-            # Install Docker if missing
+            # --- STEP 1: INSTALL DOCKER (WITHOUT docker-compose v1) ---
             if ! command -v docker &> /dev/null; then
-                echo "Docker not found. Installing latest Docker..."
+                echo "Docker not found. Installing Docker..."
                 sudo apt-get update
-                sudo apt-get install -y ca-certificates curl gnupg lsb-release
-
-                # Add Docker repo
-                sudo mkdir -p /etc/apt/keyrings
-                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-                echo \
-                  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-                  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-                sudo apt-get update
-                sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
+                sudo apt -get install -y docker.io docker-compose-plugin
                 sudo systemctl start docker
                 sudo systemctl enable docker
                 sudo usermod -aG docker $USER
+                echo "Docker installed successfully."
+                docker compose version
             else
-                echo "Docker already installed. Installing/updating Docker Compose v2 plugin..."
-                sudo apt-get update
-                sudo apt-get install -y docker-compose-plugin || true
+                echo "Docker already installed."
             fi
 
-            # Verify installation
-            docker --version
+            # --- VERIFY DOCKER COMPOSE v2 ---
             docker compose version
 
-            # -----------------------------
-            # STEP 2: CLONE OR UPDATE CODE
-            # -----------------------------
+            # --- STEP 2: CLONE OR PULL CODE ---
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "Project directory not found. Cloning repository..."
+                echo "Project folder not found. Cloning..."
                 git clone $REPO_URL $PROJECT_DIR
             else
-                echo "Project directory exists. Pulling latest changes..."
+                echo "Project folder exists. Pulling latest code..."
                 cd $PROJECT_DIR
                 git remote set-url origin $REPO_URL
                 git pull origin main
             fi
 
-            # -----------------------------
-            # STEP 3: DEPLOY APPLICATION
-            # -----------------------------
+            # --- STEP 3: DEPLOY APP ---
             cd $PROJECT_DIR
 
-            echo "Stopping existing containers (if any)..."
+            echo "Stopping and cleaning old containers..."
             sudo docker compose down -v --remove-orphans || true
 
             echo "Cleaning unused Docker resources..."
             sudo docker system prune -a -f --volumes
 
-            echo "Writing .env file from GitHub Secrets..."
+            # Write the .env file from GitHub Secrets
             echo "${{ secrets.ENV_FILE }}" > .env
 
-            echo "Building and starting containers..."
+            echo "Starting containers with Docker Compose v2..."
             sudo docker compose up -d --build
 
-            echo "Waiting 30 seconds for database startup..."
+            # Wait for DB to be ready
+            echo "Waiting 30 seconds for Database to start..."
             sleep 30
 
-            # -----------------------------
-            # STEP 4: LARAVEL SETUP
-            # -----------------------------
+            # --- LARAVEL SETUP ---
             sudo docker compose exec -T app composer install --no-dev --optimize-autoloader
             sudo docker compose exec -T app php artisan migrate --force
             sudo docker compose exec -T app php artisan config:cache
