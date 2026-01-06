@@ -25,57 +25,62 @@ jobs:
           script: |
             set -e
 
-            # --- VARIABLES ---
+            # -----------------------------
+            # VARIABLES
+            # -----------------------------
             REPO_URL="https://x-access-token:$GITHUB_TOKEN@github.com/LochaniRanasinghe/currency-exchange-app.git"
             PROJECT_DIR="/home/ubuntu/currency-exchange-app-main"
 
-            # --- STEP 1: INSTALL DOCKER (WITHOUT docker-compose v1) ---
-            if ! command -v docker &> /dev/null; then
-                echo "Docker not found. Installing Docker..."
-                sudo apt-get update
-                sudo apt-get install -y docker.io
-                sudo systemctl start docker
-                sudo systemctl enable docker
-                sudo usermod -aG docker $USER
-                echo "Docker installed successfully."
-            else
-                echo "Docker already installed."
-            fi
+            # -----------------------------
+            # STEP 1: INSTALL DOCKER + COMPOSE V2 (ALWAYS SAFE)
+            # -----------------------------
+            echo "Installing / verifying Docker and Docker Compose v2..."
 
-            # --- VERIFY DOCKER COMPOSE v2 ---
+            sudo apt-get update
+            sudo apt-get install -y docker.io docker-compose-plugin
+
+            sudo systemctl start docker
+            sudo systemctl enable docker
+
+            # Verify Docker Compose v2
             docker compose version
 
-            # --- STEP 2: CLONE OR PULL CODE ---
+            # -----------------------------
+            # STEP 2: CLONE OR UPDATE CODE
+            # -----------------------------
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "Project folder not found. Cloning..."
+                echo "Project directory not found. Cloning repository..."
                 git clone $REPO_URL $PROJECT_DIR
             else
-                echo "Project folder exists. Pulling latest code..."
+                echo "Project directory exists. Pulling latest changes..."
                 cd $PROJECT_DIR
                 git remote set-url origin $REPO_URL
                 git pull origin main
             fi
 
-            # --- STEP 3: DEPLOY APP ---
+            # -----------------------------
+            # STEP 3: DEPLOY APPLICATION
+            # -----------------------------
             cd $PROJECT_DIR
 
-            echo "Stopping and cleaning old containers..."
+            echo "Stopping existing containers (if any)..."
             sudo docker compose down -v --remove-orphans || true
 
             echo "Cleaning unused Docker resources..."
             sudo docker system prune -a -f --volumes
 
-            # Write the .env file from GitHub Secrets
+            echo "Writing .env file from GitHub Secrets..."
             echo "${{ secrets.ENV_FILE }}" > .env
 
-            echo "Starting containers with Docker Compose v2..."
+            echo "Building and starting containers..."
             sudo docker compose up -d --build
 
-            # Wait for DB to be ready
-            echo "Waiting 30 seconds for Database to start..."
+            echo "Waiting 30 seconds for database startup..."
             sleep 30
 
-            # --- LARAVEL SETUP ---
+            # -----------------------------
+            # STEP 4: LARAVEL SETUP
+            # -----------------------------
             sudo docker compose exec -T app composer install --no-dev --optimize-autoloader
             sudo docker compose exec -T app php artisan migrate --force
             sudo docker compose exec -T app php artisan config:cache
