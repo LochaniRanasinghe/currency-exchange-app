@@ -58,8 +58,10 @@ class ProcessPaymentCsv implements ShouldQueue
                 $data = array_combine($header, $row);
                 $reference = $data['reference_no'] ?? 'Unknown';
 
+
                 // 1. Fetch Exchange Rate
                 $apiKey = config('services.exchange_rate.key');
+                Log::info('Using API key: ' . $apiKey);
                 $currency = strtoupper($data['currency']);
                 $amount = (float)$data['amount'];
 
@@ -87,6 +89,7 @@ class ProcessPaymentCsv implements ShouldQueue
                 $transactionDate = Carbon::parse($data['date_time']);
 
                 // 3. Store in Database
+                Log::info("Attempting DB save for Reference {$reference}");
                 Payment::create([
                     'customer_id'      => $data['customer_id'],
                     'customer_name'    => $data['customer_name'],
@@ -97,6 +100,7 @@ class ProcessPaymentCsv implements ShouldQueue
                     'transaction_date' => $transactionDate,
                     'usd_amount'       => $usdAmount,
                 ]);
+                Log::info("DB save successful for Reference {$reference}");
 
                 // 4. Log Success for the row
                 Log::info("Row Processed Successfully: Reference {$reference}");
